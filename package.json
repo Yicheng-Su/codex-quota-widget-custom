@@ -1,0 +1,63 @@
+{
+  "name": "chatgpt-quota",
+  "version": "1.4.1",
+  "description": "Desktop widget for monitoring local Codex quota.",
+  "main": "src/main/main.js",
+  "author": "ChatGPT Quota Contributors",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "build": "electron-builder --win portable --x64",
+    "build:dir": "electron-builder --dir --win --x64",
+    "build:mac": "electron-builder --mac dir --arm64 && codesign --force --deep --sign - --identifier cn.chatgpt.quota.desktop --timestamp=none \"dist/mac-arm64/ChatGPT Quota.app\"",
+    "qa:menu": "electron scripts/qa-menu-preview.js",
+    "test": "node --test"
+  },
+  "build": {
+    "appId": "cn.chatgpt.quota.desktop",
+    "productName": "ChatGPT Quota",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/icon.*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "signExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "ChatGPT-Quota-${version}-win-x64.exe"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "assets/icon.icns",
+      "identity": null,
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "ChatGPT-Quota-${version}-mac-arm64.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}
