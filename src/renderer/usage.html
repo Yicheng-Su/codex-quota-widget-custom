@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Token 消耗 · ChatGPT Quota</title>
+    <link rel="stylesheet" href="./usage.css" />
+  </head>
+  <body>
+    <main class="usage-shell">
+      <header class="usage-header">
+        <div>
+          <p class="eyebrow"><span class="live-dot"></span>ChatGPT Quota</p>
+          <h1>Token 消耗</h1>
+          <p class="subtitle" id="dataSubtitle">正在读取本地 Codex 日志</p>
+        </div>
+        <div class="usage-header-actions">
+          <span id="lastUpdatedText">尚未更新</span>
+          <button id="usageRefreshBtn" class="usage-refresh" type="button" aria-label="刷新 Token 用量">
+            <span aria-hidden="true">&#x21bb;</span> 刷新
+          </button>
+        </div>
+      </header>
+
+      <section id="dataStatus" class="data-status" aria-live="polite">
+        <div>
+          <strong id="dataStatusTitle">正在建立用量索引</strong>
+          <span id="dataStatusText">首次读取可能需要一些时间，之后只处理新增日志。</span>
+        </div>
+        <div class="progress-track"><span id="dataProgressBar"></span></div>
+        <button id="dataRetryBtn" type="button" hidden>重试</button>
+      </section>
+
+      <section class="metric-toolbar" aria-label="统计指标">
+        <div class="segmented" id="metricTabs">
+          <button type="button" data-metric="requests">请求次数</button>
+          <button type="button" data-metric="tokens" class="active">Tokens</button>
+          <button type="button" data-metric="cost">消费金额</button>
+        </div>
+        <div class="segmented compact" id="tokenModeTabs">
+          <button type="button" data-token-mode="total" class="active">总量</button>
+          <button type="button" data-token-mode="composition">组成</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="汇总">
+        <article><span>模型调用</span><strong id="summaryRequests">--</strong><small>当前时间范围</small></article>
+        <article><span>总 Tokens</span><strong id="summaryTokens">--</strong><small id="summaryTokenParts">--</small></article>
+        <article><span>缓存命中率</span><strong id="summaryCache">--</strong><small>缓存输入 / 全部输入</small></article>
+        <article><span>API 等价估算</span><strong id="summaryCost">--</strong><small id="summaryCredits">--</small></article>
+      </section>
+
+      <section class="dashboard-grid">
+        <article class="chart-card">
+          <div class="chart-heading">
+            <div>
+              <h2 id="chartTitle">每日 Token 总量</h2>
+              <p id="chartHint">模型使用不同色系，同一模型的 effort 使用不同明度</p>
+            </div>
+            <div class="chart-controls">
+              <label id="compositionModelControl" class="model-select" hidden>
+                <span>模型</span>
+                <select id="compositionModelSelect" aria-label="选择组成图模型"></select>
+              </label>
+              <div class="chart-unit" id="chartUnit">Tokens / 天</div>
+            </div>
+          </div>
+
+          <div class="chart-content">
+            <div class="chart-wrap" id="chartWrap">
+              <svg id="usageChart" viewBox="0 0 820 390" role="img" aria-labelledby="chartTitle">
+                <g id="gridLayer"></g>
+                <g id="seriesLayer"></g>
+                <g id="axisLayer"></g>
+                <g id="hoverLayer"></g>
+              </svg>
+              <div id="tooltip" class="tooltip" hidden></div>
+              <div id="emptyState" class="empty-state" hidden>所选日期内没有数据</div>
+            </div>
+            <aside id="legend" class="legend vertical" aria-label="图例"></aside>
+          </div>
+
+          <div class="range-panel">
+            <div class="range-caption">
+              <span>时间范围</span>
+              <strong id="rangeLabel">--</strong>
+              <small>横轴滚轮缩放 · 拖动色块移动 · 拖动两端调整</small>
+            </div>
+            <div id="rangeNavigator" class="range-navigator" aria-label="时间范围控制器">
+              <svg id="overviewChart" viewBox="0 0 820 74" preserveAspectRatio="none" aria-hidden="true">
+                <path id="overviewArea"></path>
+              </svg>
+              <div id="rangeShadeLeft" class="range-shade left"></div>
+              <div id="rangeShadeRight" class="range-shade right"></div>
+              <div id="rangeSelection" class="range-selection" tabindex="0" role="slider" aria-label="当前时间范围">
+                <button id="rangeStartHandle" class="range-handle start" type="button" aria-label="调整开始日期"></button>
+                <button id="rangeEndHandle" class="range-handle end" type="button" aria-label="调整结束日期"></button>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <aside class="detail-card">
+          <div class="detail-heading">
+            <div><h2>模型明细</h2><p>点击模型展开各 effort</p></div>
+            <span>当前范围</span>
+          </div>
+          <div id="modelDetails" class="model-details"></div>
+          <p class="pricing-note">API 与 credits 均按官方 Standard token rate 估算；2,500 credits 约对应 US$100 的购买价值，但 credits 无现金价值。Fast、Priority 和超长上下文等倍率未计入。</p>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./usage-logic.js"></script>
+    <script src="./usage.js"></script>
+  </body>
+</html>

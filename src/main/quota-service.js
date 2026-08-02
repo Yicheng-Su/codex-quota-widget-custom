@@ -2,7 +2,7 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const readline = require("node:readline");
+const { getUsageData } = require("./usage-service");
 
 const DEFAULT_TIMEOUT_MS = 20000;
 const TOKEN_CACHE_TTL_MS = 60_000;
@@ -203,26 +203,35 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-async function getTodayTokenUsage(now = new Date()) {
+async function getTodayTokenUsage(now = new Date(), usageReader = getUsageData) {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const end = new Date(start);
-  end.setDate(start.getDate() + 1);
-
   const totals = {
     totalTokens: 0,
     inputTokens: 0,
     cachedInputTokens: 0,
     outputTokens: 0,
-    reasoningOutputTokens: 0,
     events: 0,
     source: "codex-session-logs",
     date: formatLocalDate(start),
     available: false
   };
 
-  const files = await listSessionFilesForRange(start, end);
-  for (const file of files) {
-    await addTokenUsageFromFile(file, start, end, totals);
+  try {
+    const data = await usageReader();
+    for (const event of data?.events || []) {
+      const timestamp = new Date(event.timestamp);
+      if (!Number.isFinite(timestamp.getTime()) || formatLocalDate(timestamp) !== totals.date) continue;
+      const input = finiteToken(event.usage?.inputTokens);
+      const cachedInput = Math.min(input, finiteToken(event.usage?.cachedInputTokens));
+      const output = finiteToken(event.usage?.outputTokens);
+      totals.inputTokens += input;
+      totals.cachedInputTokens += cachedInput;
+      totals.outputTokens += output;
+      totals.totalTokens += input + output;
+      totals.events += 1;
+    }
+  } catch (error) {
+    totals.error = error?.message || String(error);
   }
 
   totals.available = totals.events > 0;
@@ -239,46 +248,6 @@ async function getCachedTodayTokenUsage() {
   return value;
 }
 
-async function listSessionFilesForRange(start, end) {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  const sessionRoot = path.join(process.env.CODEX_HOME || path.join(home, ".codex"), "sessions");
-  const days = uniquePathDays([
-    formatPathDay(start),
-    formatPathDay(end),
-    formatUtcPathDay(start),
-    formatUtcPathDay(end)
-  ]);
-  const files = [];
-
-  for (const day of days) {
-    const dir = path.join(sessionRoot, day.year, day.month, day.day);
-    let entries;
-    try {
-      entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-        files.push(path.join(dir, entry.name));
-      }
-    }
-  }
-
-  return files;
-}
-
-function uniquePathDays(days) {
-  const seen = new Set();
-  return days.filter((day) => {
-    const key = `${day.year}-${day.month}-${day.day}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function formatPathDay(date) {
   return {
     year: String(date.getFullYear()),
@@ -287,57 +256,14 @@ function formatPathDay(date) {
   };
 }
 
-function formatUtcPathDay(date) {
-  return {
-    year: String(date.getUTCFullYear()),
-    month: String(date.getUTCMonth() + 1).padStart(2, "0"),
-    day: String(date.getUTCDate()).padStart(2, "0")
-  };
-}
-
 function formatLocalDate(date) {
   const day = formatPathDay(date);
   return `${day.year}-${day.month}-${day.day}`;
 }
 
-async function addTokenUsageFromFile(file, start, end, totals) {
-  const stream = fs.createReadStream(file, { encoding: "utf8" });
-  stream.on("error", () => {});
-
-  const lines = readline.createInterface({
-    input: stream,
-    crlfDelay: Infinity
-  });
-
-  for await (const line of lines) {
-    if (!line.includes('"token_count"')) continue;
-
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-
-    const timestamp = new Date(entry.timestamp);
-    if (!Number.isFinite(timestamp.getTime()) || timestamp < start || timestamp >= end) continue;
-    if (entry.type !== "event_msg" || entry.payload?.type !== "token_count") continue;
-
-    const usage = entry.payload.info?.last_token_usage;
-    if (!usage) continue;
-
-    totals.totalTokens += numberOrZero(usage.total_tokens);
-    totals.inputTokens += numberOrZero(usage.input_tokens);
-    totals.cachedInputTokens += numberOrZero(usage.cached_input_tokens);
-    totals.outputTokens += numberOrZero(usage.output_tokens);
-    totals.reasoningOutputTokens += numberOrZero(usage.reasoning_output_tokens);
-    totals.events += 1;
-  }
-}
-
-function numberOrZero(value) {
+function finiteToken(value) {
   const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
+  return Number.isFinite(number) ? Math.max(0, number) : 0;
 }
 
 async function requestRateLimits() {

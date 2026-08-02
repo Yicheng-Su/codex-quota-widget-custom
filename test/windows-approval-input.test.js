@@ -122,6 +122,49 @@ test("first stage inserts the fixed Unicode text and returns an opaque expiring 
   assert.equal(input.hasPending(result.token), true);
 });
 
+test("first stage retries one transient focus failure after the configured delay", async () => {
+  const requests = [];
+  const delays = [];
+  const target = makeTarget();
+  const input = createWindowsApprovalInput({
+    platform: "win32",
+    retryDelayMs: 100,
+    wait: async (milliseconds) => delays.push(milliseconds),
+    makeToken: () => "approval-retried",
+    runner: async (request) => {
+      requests.push(request);
+      return requests.length === 1
+        ? { ok: false, code: "uia-focus-unavailable" }
+        : { ok: true, code: "inserted", target };
+    }
+  });
+
+  const result = await input.insertApprovalText();
+  assert.equal(result.ok, true);
+  assert.deepEqual(requests, [{ action: "insert" }, { action: "insert" }]);
+  assert.deepEqual(delays, [100]);
+});
+
+test("first stage never retries after input may have been sent or for non-focus failures", async () => {
+  for (const failure of [
+    { ok: false, code: "target-changed-after-input", inputWasSent: true },
+    { ok: false, code: "modifier-key-down" }
+  ]) {
+    let calls = 0;
+    const input = createWindowsApprovalInput({
+      platform: "win32",
+      wait: async () => assert.fail("non-retryable failures must not wait"),
+      runner: async () => {
+        calls += 1;
+        return failure;
+      }
+    });
+    const result = await input.insertApprovalText();
+    assert.equal(result.code, failure.code);
+    assert.equal(calls, 1);
+  }
+});
+
 test("second stage sends once only when the exact target is returned", async () => {
   const target = makeTarget();
   const requests = [];

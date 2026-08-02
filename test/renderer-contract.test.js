@@ -43,11 +43,14 @@ test("menu percentage uses shared quota threshold logic", () => {
 
 test("compact widget exposes the new controls without the overlapping footer", () => {
   const html = read("src/renderer/index.html");
+  const renderer = read("src/renderer/renderer.js");
 
   assert.match(html, /id="headerRefreshBtn"/);
   assert.match(html, /id="opacityInput"[^>]*type="range"/);
   assert.match(html, /class="quota-meta-row"/);
   assert.match(html, /id="approvalBtn"/);
+  assert.doesNotMatch(html, /id="langBtn"/);
+  assert.doesNotMatch(renderer, /codexQuotaLang|elements\.langBtn|setLanguage\(/);
   assert.doesNotMatch(html, /<footer class="status">/);
 });
 
@@ -112,4 +115,63 @@ test("opacity is persisted by the main process and applied to the native window"
   assert.match(main, /windowOpacity = normalizeWindowOpacity\(settings\.windowOpacity\)/);
   assert.match(main, /mainWindow\.setOpacity\(windowOpacity\)/);
   assert.match(preload, /window:opacity:set/);
+});
+
+test("token usage opens in a separate safe renderer window", () => {
+  const html = read("src/renderer/index.html");
+  const renderer = read("src/renderer/renderer.js");
+  const preload = read("src/main/preload.js");
+  const usagePreload = read("src/main/preload-usage.js");
+  const main = read("src/main/main.js");
+  const usageHtml = read("src/renderer/usage.html");
+
+  assert.match(html, /id="usageBtn"/);
+  assert.match(renderer, /openUsageWindow\(\)/);
+  assert.match(preload, /openUsageWindow:.*usage:open/);
+  assert.match(main, /function createUsageWindow\(\)/);
+  assert.match(main, /ipcMain\.handle\("usage:open"/);
+  assert.match(main, /preload: path\.join\(__dirname, "preload-usage\.js"\)/);
+  assert.match(main, /ipcMain\.handle\("usage:get-data"/);
+  assert.match(usagePreload, /getUsageData:.*usage:get-data/);
+  assert.match(usagePreload, /usage:progress/);
+  assert.match(usageHtml, /usage-logic\.js/);
+  assert.match(usageHtml, /data-token-mode="composition"/);
+  assert.match(usageHtml, /id="compositionModelSelect"/);
+  assert.match(usageHtml, /id="rangeNavigator"/);
+  assert.match(usageHtml, /id="rangeStartHandle"/);
+  assert.match(usageHtml, /id="rangeEndHandle"/);
+  assert.match(usageHtml, /id="modelDetails"/);
+  assert.match(usageHtml, /id="dataStatus"/);
+  assert.match(usageHtml, /id="usageRefreshBtn"/);
+  assert.doesNotMatch(usageHtml, /本地真实数据/);
+  assert.doesNotMatch(usageHtml, /样例数据/);
+  assert.doesNotMatch(usageHtml, /type="date"/);
+  assert.doesNotMatch(usageHtml, /class="billing-note"/);
+  assert.match(usageHtml, /2,500 credits 约对应 US\$100/);
+  const usageRenderer = read("src/renderer/usage.js");
+  assert.match(usageRenderer, /hiddenModels: new Set\(\)/);
+  assert.match(usageRenderer, /className = "legend-item legend-toggle"/);
+  assert.match(usageRenderer, /state\.hiddenModels\.has\(model\)/);
+  assert.match(usagePreload, /getRefreshIntervalMinutes:.*settings:refreshInterval:get/);
+  assert.match(usagePreload, /onRefreshIntervalChanged/);
+  assert.match(usageRenderer, /scheduleAutoRefresh/);
+  assert.match(usageRenderer, /onRefresh\?\./);
+  assert.match(usageRenderer, /document\.visibilityState === "visible"/);
+});
+
+test("real usage HTML preview is loopback-only and exposes token aggregates only", () => {
+  const server = read("scripts/qa-usage-preview-server.js");
+  const renderer = read("src/renderer/usage.js");
+
+  assert.match(server, /const host = "127\.0\.0\.1"/);
+  assert.match(server, /createUsageService\(\{ cacheFile: null \}\)/);
+  assert.match(server, /requestPath === "\/api\/usage"/);
+  assert.match(server, /allowedFiles = new Set\(\["usage\.html", "usage\.css", "usage-logic\.js", "usage\.js"\]\)/);
+  assert.match(server, /timestamp: event\.timestamp/);
+  assert.match(server, /cachedInputTokens: event\.usage\?\.cachedInputTokens/);
+  assert.doesNotMatch(server, /turnId: event\.turnId/);
+  assert.doesNotMatch(server, /Access-Control-Allow-Origin/);
+  assert.match(renderer, /window\.location\.protocol !== "http:"/);
+  assert.match(renderer, /loopbackHosts\.has\(window\.location\.hostname\)/);
+  assert.match(renderer, /fetch\("\/api\/usage", \{ cache: "no-store", credentials: "omit" \}\)/);
 });

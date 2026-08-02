@@ -687,6 +687,10 @@ function createWindowsApprovalInput(options = {}) {
   const platform = options.platform || process.platform;
   const runner = options.runner || ((request) => runApprovalHelper(request, options));
   const now = options.now || Date.now;
+  const wait = options.wait || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const retryDelayMs = Number.isFinite(options.retryDelayMs)
+    ? Math.max(0, Math.floor(options.retryDelayMs))
+    : 100;
   const makeToken = options.makeToken || (() => `approval-${crypto.randomUUID()}`);
   const tokenTtlMs = Number.isFinite(options.tokenTtlMs)
     ? Math.max(1, Math.floor(options.tokenTtlMs))
@@ -711,7 +715,24 @@ function createWindowsApprovalInput(options = {}) {
     busy = true;
     pendingTargets.clear();
     try {
-      const result = await runner(buildRunnerRequest("insert"));
+      const request = buildRunnerRequest("insert");
+      let result = await runner(request);
+      const retryableCodes = new Set([
+        "foreground-window-unavailable",
+        "foreground-process-unavailable",
+        "foreground-not-official-codex",
+        "uia-focus-unavailable",
+        "focused-control-not-editable",
+        "focused-control-not-codex"
+      ]);
+      if (
+        result?.ok !== true &&
+        result?.inputWasSent !== true &&
+        retryableCodes.has(result?.code)
+      ) {
+        await wait(retryDelayMs);
+        result = await runner(request);
+      }
       if (!result || result.ok !== true) {
         return failure(result?.code || "runner-failed", {
           inputWasSent: result?.inputWasSent === true

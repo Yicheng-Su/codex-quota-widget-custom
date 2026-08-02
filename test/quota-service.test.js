@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { normalizeSnapshot, resolveCodexCandidates } = require("../src/main/quota-service");
+const { normalizeSnapshot, resolveCodexCandidates, getTodayTokenUsage } = require("../src/main/quota-service");
 
 test("normalizes both the five-hour and seven-day quota windows", () => {
   const result = normalizeSnapshot({
@@ -84,3 +84,18 @@ test("finds a macOS Codex CLI installed in the user's local bin", () => {
   }
 });
 
+test("today token total uses deduplicated real usage events", async () => {
+  const usageReader = async () => ({
+    events: [
+      { timestamp: "2026-08-02T01:00:00+08:00", usage: { inputTokens: 100, cachedInputTokens: 40, outputTokens: 20 } },
+      { timestamp: "2026-08-02T23:00:00+08:00", usage: { inputTokens: 200, cachedInputTokens: 50, outputTokens: 30 } },
+      { timestamp: "2026-08-01T23:00:00+08:00", usage: { inputTokens: 999, cachedInputTokens: 0, outputTokens: 1 } }
+    ]
+  });
+  const result = await getTodayTokenUsage(new Date("2026-08-02T12:00:00+08:00"), usageReader);
+  assert.equal(result.events, 2);
+  assert.equal(result.inputTokens, 300);
+  assert.equal(result.cachedInputTokens, 90);
+  assert.equal(result.outputTokens, 50);
+  assert.equal(result.totalTokens, 350);
+});

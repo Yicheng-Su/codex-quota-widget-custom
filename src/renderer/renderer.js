@@ -16,6 +16,7 @@ const i18n = {
     plan: "\u8ba1\u5212",
     todayTokens: "\u4eca\u65e5Token",
     refresh: "\u5237\u65b0",
+    viewTokenUsage: "\u67e5\u770b Token \u6d88\u8017",
     hide: "\u9690\u85cf",
     close: "\u9000\u51fa",
     pinOn: "\u53d6\u6d88\u7f6e\u9876",
@@ -64,6 +65,7 @@ const i18n = {
     plan: "Plan",
     todayTokens: "Today",
     refresh: "Refresh",
+    viewTokenUsage: "View token usage",
     hide: "Hide",
     close: "Quit",
     pinOn: "Unpin",
@@ -98,7 +100,7 @@ const i18n = {
 };
 
 const state = {
-  lang: localStorage.getItem("codexQuotaLang") || "zh",
+  lang: "zh",
   quota: null,
   error: null,
   loading: false,
@@ -119,7 +121,6 @@ const state = {
 let refreshTimer = null;
 let approvalTimer = null;
 let approvalPreparePromise = null;
-let pointerOverApproval = false;
 let sloshHoldTimer = null;
 let sloshPointerId = null;
 let sloshActive = false;
@@ -134,7 +135,6 @@ const elements = {
   trafficLight: $("trafficLight"),
   brandName: $("brandName"),
   stateText: $("stateText"),
-  langBtn: $("langBtn"),
   settingsBtn: $("settingsBtn"),
   settingsBackdrop: $("settingsBackdrop"),
   settingsPanel: $("settingsPanel"),
@@ -162,6 +162,7 @@ const elements = {
   approvalShortcutInput: $("approvalShortcutInput"),
   pinBtn: $("pinBtn"),
   refreshBtn: $("refreshBtn"),
+  usageBtn: $("usageBtn"),
   headerRefreshBtn: $("headerRefreshBtn"),
   minimizeBtn: $("minimizeBtn"),
   closeBtn: $("closeBtn"),
@@ -193,12 +194,6 @@ function t(key) {
   return i18n[state.lang][key] || key;
 }
 
-function setLanguage(lang) {
-  state.lang = lang;
-  localStorage.setItem("codexQuotaLang", lang);
-  render();
-}
-
 async function refreshQuota() {
   if (state.loading) return;
   state.loading = true;
@@ -228,7 +223,6 @@ function render() {
   elements.body.dataset.state = healthLevel;
   elements.brandName.textContent = "ChatGPT Quota";
   elements.stateText.textContent = state.loading ? t("loading") : state.error ? t("readFailed") : t("readNormal");
-  elements.langBtn.textContent = state.lang === "zh" ? "English" : "\u4e2d\u6587";
   elements.settingsBtn.title = t("settings");
   elements.settingsBtn.setAttribute("aria-label", t("settings"));
   elements.settingsTitle.textContent = t("settings");
@@ -255,6 +249,8 @@ function render() {
   elements.pinBtn.textContent = elements.pinBtn.title;
   elements.refreshBtn.title = t("refresh");
   elements.refreshBtn.textContent = t("refresh");
+  elements.usageBtn.title = t("viewTokenUsage");
+  elements.usageBtn.textContent = t("viewTokenUsage");
   elements.headerRefreshBtn.title = t("refresh");
   elements.headerRefreshBtn.setAttribute("aria-label", t("refresh"));
   elements.headerRefreshBtn.disabled = state.loading;
@@ -647,12 +643,13 @@ function refreshWithLiquidMotion() {
 }
 
 function wireEvents() {
-  elements.langBtn.addEventListener("click", () => {
-    setLanguage(state.lang === "zh" ? "en" : "zh");
-  });
   elements.refreshBtn.addEventListener("click", () => {
     closeSettingsPanel();
     refreshWithLiquidMotion();
+  });
+  elements.usageBtn.addEventListener("click", () => {
+    closeSettingsPanel();
+    window.codexQuota.openUsageWindow();
   });
   elements.headerRefreshBtn.addEventListener("click", refreshWithLiquidMotion);
   elements.settingsBtn.addEventListener("click", () => {
@@ -742,13 +739,6 @@ function wireEvents() {
   });
   window.codexQuota.onApprovalStateChanged(applyApprovalStateChange);
   window.codexQuota.onWindowBlur(closeSettingsPanel);
-  elements.approvalBtn.addEventListener("pointerenter", () => {
-    pointerOverApproval = true;
-    if (!state.approvalSession) ensureApprovalTarget();
-  });
-  elements.approvalBtn.addEventListener("pointerleave", () => {
-    pointerOverApproval = false;
-  });
   elements.approvalBtn.addEventListener("click", handleApprovalClick);
   elements.approvalBtn.addEventListener("contextmenu", (event) => {
     event.preventDefault();

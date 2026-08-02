@@ -2,6 +2,7 @@ const { app, BrowserWindow, globalShortcut, ipcMain, shell, Tray, Menu, nativeIm
 const fs = require("node:fs");
 const path = require("node:path");
 const { getQuota } = require("./quota-service");
+const { configureUsageService, getUsageData } = require("./usage-service");
 const { syncDockVisibility } = require("./dock-visibility");
 const { MENU_BAR_POPOVER_SIZE } = require("./menu-bar-layout");
 const { createWindowsApprovalInput } = require("./windows-approval-input");
@@ -14,6 +15,7 @@ const {
 
 let mainWindow;
 let menuBarWindow;
+let usageWindow;
 let tray;
 let isAlwaysOnTop = true;
 let refreshIntervalMinutes = 5;
@@ -112,6 +114,40 @@ function createWindow() {
     else mainWindow.show();
     placeWindowTopRight();
   });
+}
+
+function createUsageWindow() {
+  if (usageWindow && !usageWindow.isDestroyed()) {
+    if (usageWindow.isMinimized()) usageWindow.restore();
+    usageWindow.show();
+    usageWindow.focus();
+    return usageWindow;
+  }
+
+  usageWindow = new BrowserWindow({
+    width: 1080,
+    height: 720,
+    minWidth: 820,
+    minHeight: 560,
+    show: false,
+    backgroundColor: "#0d141b",
+    icon: process.platform === "darwin" ? undefined : getIcon(),
+    webPreferences: {
+      preload: path.join(__dirname, "preload-usage.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false
+    }
+  });
+  usageWindow.setMenuBarVisibility(false);
+  usageWindow.loadFile(path.join(__dirname, "../renderer/usage.html"));
+  usageWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  usageWindow.webContents.on("will-navigate", (event) => event.preventDefault());
+  usageWindow.once("ready-to-show", () => usageWindow?.show());
+  usageWindow.on("closed", () => {
+    usageWindow = null;
+  });
+  return usageWindow;
 }
 
 function createMenuBarWindow() {
@@ -436,7 +472,8 @@ function prepareApprovalInput() {
 
 async function insertApprovalInput() {
   if (!approvalFocusBypass) {
-    return { ok: false, code: "not-prepared", message: approvalMessage("not-prepared") };
+    const prepared = prepareApprovalInput();
+    if (!prepared.ok) return prepared;
   }
   const result = await windowsApprovalInput.insertApprovalText();
   if (!result.ok) {
@@ -528,6 +565,7 @@ function setRefreshIntervalMinutes(minutes) {
   refreshIntervalMinutes = normalizeRefreshInterval(minutes);
   saveSettings();
   mainWindow?.webContents.send("settings:refreshIntervalChanged", refreshIntervalMinutes);
+  usageWindow?.webContents.send("settings:refreshIntervalChanged", refreshIntervalMinutes);
   rebuildTrayMenu();
   notifyMenuBarStateChanged();
   return refreshIntervalMinutes;
@@ -694,6 +732,9 @@ async function handleMenuBarAction(action, value) {
 
 app.whenReady().then(() => {
   loadSettings();
+  configureUsageService({
+    cacheFile: path.join(app.getPath("userData"), "usage-index-v1.json")
+  });
   if (process.platform === "win32") {
     const options = getAutoLaunchOptions();
     app.setLoginItemSettings({ openAtLogin: false, path: options.path, args: options.args });
@@ -711,6 +752,11 @@ app.whenReady().then(() => {
     updateLatestQuota(quota);
     return quota;
   });
+  ipcMain.handle("usage:get-data", () => getUsageData({
+    onProgress: (progress) => {
+      if (usageWindow && !usageWindow.isDestroyed()) usageWindow.webContents.send("usage:progress", progress);
+    }
+  }));
   ipcMain.handle("settings:refreshInterval:get", () => refreshIntervalMinutes);
   ipcMain.handle("settings:refreshInterval:set", (_event, value) => setRefreshIntervalMinutes(value));
   ipcMain.handle("window:opacity:get", () => windowOpacity);
@@ -740,6 +786,11 @@ app.whenReady().then(() => {
       ? "/Applications/Codex.app"
       : path.join(process.env.LOCALAPPDATA || "", "OpenAI", "Codex");
     shell.openPath(codexPath);
+  });
+  ipcMain.handle("usage:open", () => {
+    const window = createUsageWindow();
+    if (window.webContents && !window.webContents.isLoading()) window.webContents.send("usage:refresh");
+    return true;
   });
   ipcMain.handle("menu-bar:get-state", getMenuBarState);
   ipcMain.handle("menu-bar:action", (_event, action, value) => handleMenuBarAction(action, value));

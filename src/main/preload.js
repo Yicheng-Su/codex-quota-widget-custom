@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("codexQuota", {
   getAlwaysOnTop: () => ipcRenderer.invoke("window:alwaysOnTop:get"),
   setAlwaysOnTop: (value) => ipcRenderer.invoke("window:alwaysOnTop:set", value),
   openCodex: () => ipcRenderer.invoke("external:openCodex"),
+  openUsageWindow: () => ipcRenderer.invoke("usage:open"),
   isApprovalSupported: () => ipcRenderer.invoke("approval:is-supported"),
   prepareApprovalTarget: () => ipcRenderer.invoke("approval:prepare"),
   insertApproval: (target) => ipcRenderer.invoke("approval:insert", target),
